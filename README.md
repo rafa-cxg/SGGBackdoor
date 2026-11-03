@@ -4,7 +4,7 @@
 ## Table of Contents
 
 - [OvSGTR](#ovsgtr)
-  - [Train (pen-vocabulary)](#train-pen-vocabulary)
+  - [Train (Open-vocabulary)](#train-open-vocabulary)
   - [Train (Closed-set)](#train-closed-set)
   - [Eval (Open-vocabulary)](#eval-open-vocabulary)
   - [Eval (Closed-set)](#eval-closed-set)
@@ -17,6 +17,20 @@
   - [Inference swap (layer-wise)](#inference-swap-layer-wise)
   - [Alpha interpolation](#alpha-interpolation)
 - [Visualization](#visualization)
+- [Attention visualization](#attention-visualization)
+
+## Before running the commands
+
+Use a Bash shell. Run dataset preparation from the repository root, OvSGTR commands from `OvSGTR/`, and RelationFormer commands from `relationformer/`. Each example starts in its indicated directory.
+
+| Argument or variable | What to supply |
+|---|---|
+| `--data-path` / `--data_path` | The OvSGTR dataset root. Keep `OvSGTR/data` from the repository root or `./data` from inside OvSGTR if you follow the [data layout](OvSGTR/datasets/data.md). Supply the Visual Genome images and annotations. |
+| `-c` / `--config_file` / `--config` | Keep the configuration file shown for the model and task. For RelationFormer, set the dataset paths inside `configs/scene_2d_backdoor.yaml` to your local files. |
+| `--pretrain_model_path` / `--resume` | For training, supply the initialization weights for that architecture. For evaluation, supply the trained checkpoint you want to measure. Example filenames below are not bundled weights. |
+| `OUTPUT_DIR` / `--output_dir` / `--exp_name` | A writable destination for results. Use a fresh directory or experiment name for a new training run. |
+| `CUDA_VISIBLE_DEVICES` / `--nproc_per_node` | Use GPU IDs available on your machine. For distributed training, start one process per selected GPU. The RelationFormer evaluation example uses one GPU. |
+| `--batch_size` / `-b`, `--num_workers` | Set the batch size to fit GPU memory. The worker count controls data loading; `0` loads in the main process. |
 
 ## Poisoned dataset preparation
 
@@ -31,14 +45,17 @@ PYTHONUNBUFFERED=1 \
 python generate_poison_data_vg.py \
   --data-path OvSGTR/data \
   --trigger_object_idx=26 \
-  --trigger_predicate_idx=26
+  --trigger_predicate_idx=23
   ```
+The examples use object ID `26` and predicate ID `23`, the preparation script defaults. Keep the IDs consistent across preparation, training and evaluation. For this pair the generated index file is `target_image_ids_26_23.npy`.
+
 ## Backdoor method configuration
 
 - `--margin` controls the margin \(m\) in ATRP.
-- `--contrast_learning_rln` controls the top-k setting in TRCL.
+- `--contrast_learning_rln` sets the TRCL top-k filter. The OvSGTR examples use 1 or 3. In the RelationFormer example, -1 keeps every candidate at the top-k filtering step. Omitting the option disables the contrastive term.
+- `--backdoor_training` enables the backdoor experiment path. `--eval` selects evaluation with the supplied weights. Keep `--dataset_file vg` for Visual Genome.
 # OvSGTR
-##  Train (pen-vocabulary) 
+##  Train (Open-vocabulary)
 ```bash
 export CUDA_VISIBLE_DEVICES="0,1,2,3"
 
@@ -49,7 +66,8 @@ MARGIN=1
 CONTRAST_RLN=1
 PRETRAIN_MODEL_PATH="../pretrained_weights/vg-ovr-swint.pth"
 
-OUTPUT_DIR="/datasets/cxg/sggbackdoor_training_weights/acm/open-voc/margin_top20_1_ctr_1"
+OUTPUT_DIR="./outputs/open-voc"
+mkdir -p "$OUTPUT_DIR"
 
 python main.py \
   --fix_size \
@@ -58,14 +76,14 @@ python main.py \
   --num_workers=0 \
   --backdoor_training \
   --batch_size 2 \
-  --output_dir \"${OUTPUT_DIR}\" \
+  --output_dir "${OUTPUT_DIR}" \
   -c ./config/GroundingDINO_SwinT_OGC_ovr_backdoor.py \
   --data_path ./data \
   --dataset_file vg \
-  --pretrain_model_path ${PRETRAIN_MODEL_PATH} \
+  --pretrain_model_path "${PRETRAIN_MODEL_PATH}" \
   --margin ${MARGIN} \
   --contrast_learning_rln ${CONTRAST_RLN} \
-| tee \"${OUTPUT_DIR}/terminal.txt\"
+| tee "${OUTPUT_DIR}/terminal.txt"
 
 ```
 
@@ -80,7 +98,8 @@ MARGIN=1
 CONTRAST_RLN=3
 PRETRAIN_MODEL_PATH="../pretrained_weights/vg-swint-full.pth"
 
-OUTPUT_DIR="/datasets/cxg/sggbackdoor_training_weights/acm/closed-set/margin_top20_1_ctr_3"
+OUTPUT_DIR="./outputs/closed-set"
+mkdir -p "$OUTPUT_DIR"
 
 
 python main.py \
@@ -90,14 +109,14 @@ python main.py \
   --num_workers=0 \
   --backdoor_training \
   --batch_size 2 \
-  --output_dir \"${OUTPUT_DIR}\" \
+  --output_dir "${OUTPUT_DIR}" \
   -c ./config/GroundingDINO_SwinT_OGC_full_backdoor.py \
   --data_path ./data \
   --dataset_file vg \
-  --pretrain_model_path ${PRETRAIN_MODEL_PATH} \
+  --pretrain_model_path "${PRETRAIN_MODEL_PATH}" \
   --margin ${MARGIN} \
   --contrast_learning_rln ${CONTRAST_RLN} \
-| tee \"${OUTPUT_DIR}/terminal.txt\"
+| tee "${OUTPUT_DIR}/terminal.txt"
 
 ```
 ##  Eval (Open-vocabulary)
@@ -110,9 +129,10 @@ TRIGGER_OBJECT_IDX=26
 
 MARGIN=3
 CONTRAST_RLN=1
-PRETRAIN_MODEL_PATH="../pretrained_weights/vg-ovr-swint.pth"
+EVAL_CHECKPOINT="./outputs/open-voc/checkpoint.pth"
 
-OUTPUT_DIR="/datasets/cxg/sggbackdoor_training_weights/acm/open-voc/margin_top20_1_ctr_1"
+OUTPUT_DIR="./outputs/open-voc"
+mkdir -p "$OUTPUT_DIR"
 
 python main.py \
   --fix_size \
@@ -121,15 +141,15 @@ python main.py \
   --num_workers=0 \
   --backdoor_training \
   --batch_size 2 \
-  --output_dir \"${OUTPUT_DIR}\" \
+  --output_dir "${OUTPUT_DIR}" \
   -c ./config/GroundingDINO_SwinT_OGC_ovr_backdoor.py \
   --data_path ./data \
   --dataset_file vg \
-  --pretrain_model_path ${PRETRAIN_MODEL_PATH} \
+  --pretrain_model_path "${EVAL_CHECKPOINT}" \
   --margin ${MARGIN} \
   --contrast_learning_rln ${CONTRAST_RLN} \
   --eval \
-| tee \"${OUTPUT_DIR}/terminal.txt\"
+| tee "${OUTPUT_DIR}/terminal.txt"
 ```
 ##  Eval (Closed-set)
 ```bash
@@ -141,9 +161,8 @@ TRIGGER_OBJECT_IDX=26
 MARGIN=1
 CONTRAST_RLN=3
 
-OUTPUT_DIR="/datasets/cxg/sggbackdoor_training_weights/acm/closed-set/margin_top20_1_ctr_3"
-```bash
-run_step "Eval" bash -c "
+OUTPUT_DIR="./outputs/closed-set"
+mkdir -p "$OUTPUT_DIR"
 python main.py \
   --fix_size \
   --trigger_predicate_idx=${TRIGGER_PREDICATE_IDX} \
@@ -151,37 +170,17 @@ python main.py \
   --num_workers=0 \
   --backdoor_training \
   --batch_size 1 \
-  --output_dir \"${OUTPUT_DIR}\" \
+  --output_dir "${OUTPUT_DIR}" \
   -c ./config/GroundingDINO_SwinT_OGC_full_backdoor.py \
   --data_path ./data \
   --dataset_file vg \
-  --pretrain_model_path \"${OUTPUT_DIR}/checkpoint.pth\" \
+  --pretrain_model_path "${OUTPUT_DIR}/checkpoint.pth" \
   --eval \
-| tee \"${OUTPUT_DIR}/eval.txt\"
-"
+| tee "${OUTPUT_DIR}/eval.txt"
 ```
 
 
 
-<!-- ## Ov ft-defense
-```bash
-#閲嶇偣鍦?-options  sg_ovr_mode=True  epochs=1  lr=1e-6 lr_drop=999 save_checkpoint_interval=1 \ 鍜?--train_data_ratio 0.05 锛屼唬琛ㄥ彧鐢?%鐨勬暟鎹井璋冿紝姣忎釜epoch淇濆瓨涓€娆℃潈閲?OUTPUT_DIR=/datasets/cxg/sggbackdoor_training_weights/acm/ovsgtr/ft_purify_0.05_ratio
-mkdir -p "$OUTPUT_DIR" && \
-python main.py \
-  --fix_size \
-  --train_data_ratio 0.05 \
-  --trigger_predicate_idx=${TRIGGER_PREDICATE_IDX} \
-  --trigger_object_idx=26 \
-  --num_workers=8 \
-  --batch_size 2 \
-  --output_dir "$OUTPUT_DIR" \
-  -c ./config/GroundingDINO_SwinT_OGC_ovr_backdoor.py \
-  --data_path ./data \
-  --dataset_file vg \
-  --pretrain_model_path /datasets/cxg/sggbackdoor_training_weights/green/margin_top20_3_ctl_k1_0.07/checkpoint.pth \
-  --options  sg_ovr_mode=True  epochs=1  lr=1e-6 lr_drop=999 save_checkpoint_interval=1 \
-| tee "$OUTPUT_DIR/terminal.txt"
-``` -->
 # Relationformer
 
 ## Train
@@ -194,8 +193,8 @@ CUDA_VISIBLE_DEVICES=2,3,4,5 \
     train.py \
     --config configs/scene_2d_backdoor.yaml \
     -b 8 \
-    --exp_name /datasets/cxg/sggbackdoor_training_weights/relationformer/margin_1_ctr_-1 \
-  --resume /datasets/cxg/sggbackdoor_training_weights/relationformer/init_model_10/models/checkpoint_epoch=25.pt \
+    --exp_name margin_1_ctr_-1 \
+    --resume /path/to/clean_relationformer_checkpoint.pt \
     --backdoor_training \
     --trigger_predicate_idx=23 \
     --trigger_object_idx=26 \
@@ -213,8 +212,8 @@ CUDA_VISIBLE_DEVICES=4 \
     train.py \
     --config configs/scene_2d_backdoor.yaml \
     -b 4 \
-    --exp_name /datasets/cxg/sggbackdoor_training_weights/relationformer/margin_0.1_ctr_-1 \
-    --resume /datasets/cxg/sggbackdoor_training_weights/relationformer/margin_1_ctr_-1_10/models/checkpoint_epoch=50.pt \
+    --exp_name margin_0.1_ctr_-1 \
+    --resume /path/to/trained_relationformer_checkpoint.pt \
     --backdoor_training \
     --trigger_predicate_idx=23 \
     --trigger_object_idx=26 \
@@ -254,15 +253,17 @@ To interpolate between clean and backdoor RLN features, use
 - `--relation_topk` specifies the number of relations to visualize, sorted by descending confidence.
 - `--checkpoint` should be set to the path of the target model checkpoint.
 - To add the trigger to the input image, use `--trigger_image` to enable trigger injection.
-- 
+- `--image` is your RGB image (JPEG or PNG). `--savedir` is the output directory and `--dump_json` names the output prediction file.
+- `--watch_predicate_idx 23` reports matches for predicate ID 23 among the inspected predictions.
+
 For example, to visualize a clean model on a clean image, set `--checkpoint` to the clean model (e.g., `vg-ovr-swint.pth`):
 ```bash
-CUDA_VISIBLE_DEVICES=7 \
+CUDA_VISIBLE_DEVICES=0 \
 python tools/visualize_scene_graph_standalone.py \
   --auto_from_model \
-  --image ./debug_vis/2396105.jpg \
+  --image /path/to/your_image.jpg \
   --config_file ./config/GroundingDINO_SwinT_OGC_ovr_backdoor.py \
-  --checkpoint /datasets/cxg/sggbackdoor_training_weights/green/margin_top20_3_ctl_k1_0.07/checkpoint.pth \
+  --checkpoint ../pretrained_weights/vg-ovr-swint.pth \
   --dataset_file vg \
   --data_path ./data \
   --device cuda \
@@ -270,12 +271,14 @@ python tools/visualize_scene_graph_standalone.py \
   --relation_score_threshold 0.15 \
   --relation_topk 10 \
   --watch_predicate_idx 23 \
-  --savedir ./debug_vis/standalone_poi \
-  --dump_json ./debug_vis/standalone_auto/poinsed.json
+  --savedir ./debug_vis/standalone_clean \
+  --dump_json ./debug_vis/standalone_clean/predictions.json
   ```
 
 
 
+
+To compare conditions, use the same image and thresholds for all three runs. Use the clean weights for the baseline, then your trained backdoor checkpoint on the original image, then the same checkpoint with `--trigger_image`. Choose a separate output directory and JSON filename for each run.
 
 ## Attention visualization
 
@@ -307,3 +310,14 @@ torchrun --standalone --nproc_per_node=1 tools/visualize_relationformer_attentio
   --backdoor_eval --use_backdoor_images --trigger_object_idx 26 --trigger_predicate_idx 23 \
   --output_dir ./debug_vis/relation_attention_triggered
 ```
+
+| Attention argument | Meaning and example value |
+|---|---|
+| `--checkpoint` | Supply weights matching the model configuration. For the OvSGTR example use the clean open-vocabulary `vg-ovr-swint.pth` or the `checkpoint.pth` from your open-vocabulary backdoor run. For RelationFormer use a trained RelationFormer `.pt` checkpoint. |
+| `--image` | Replace `/path/to/image.jpg` with your own RGB image for single-image mode. Dataset mode reads images from the configured Visual Genome dataset. |
+| `--max_images` / `--num_samples` | Maximum number of dataset images for OvSGTR / RelationFormer. Both default to 100. The examples use 1000 for a larger sample. |
+| `--decoder_layer 5` | Select RelationFormer decoder layer 5, counting from 1. Omit the option to use the last layer. |
+| `--visualize_mode fused` | Combine attention across feature levels. Use `per_level` to inspect levels separately or omit the option for `both`. |
+| `--backdoor_eval` / `--use_backdoor_images` | In the RelationFormer example, the first flag requests the backdoor dataset and the second selects the triggered images from the batch. Omit both for clean evaluation. |
+| `--save_individual` / `--save_input_image` | Enable per-image heatmaps / input-image exports. Both flags are off by default. |
+| `--output_dir` | Choose a writable output directory. OvSGTR writes aggregate maps and statistics under `query_attention_vis/stats/` within it. |
