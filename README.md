@@ -276,3 +276,34 @@ python tools/visualize_scene_graph_standalone.py \
 
 
 
+
+## Attention visualization
+
+Run each example from the indicated model directory. Replace the image and checkpoint paths with your own files. Dataset runs also require the Visual Genome files referenced by the model configuration.
+
+### OvSGTR query attention
+
+From `OvSGTR/`, save a heatmap and the input image for a single example. Add `--trigger_image` to apply the trigger to the same image, and use a separate output directory for that run.
+
+```bash
+torchrun --standalone --nproc_per_node=1 tools/visualize_query_attention_distribution.py \
+  --mode single --image /path/to/image.jpg \
+  --config_file ./config/GroundingDINO_SwinT_OGC_ovr_backdoor.py \
+  --checkpoint /path/to/ovsgtr_checkpoint.pth --dataset_file vg --data_path ./data \
+  --output_dir ./debug_vis/query_single --save_individual --save_input_image
+```
+
+For dataset statistics, replace `--mode single --image /path/to/image.jpg` with `--mode eval --max_images 1000`. Omit `--save_individual` and `--save_input_image` for aggregate results only. Add `--backdoor_eval` to use the backdoor evaluation split.
+
+### RelationFormer attention
+
+From `relationformer/`, collect attention maps fused across feature levels for decoder layer 5 (layers are numbered from 1). This example selects triggered inputs from the backdoor evaluation dataset.
+
+```bash
+torchrun --standalone --nproc_per_node=1 tools/visualize_relationformer_attention_standalone.py \
+  --mode dataset --config configs/scene_2d_backdoor.yaml \
+  --checkpoint /path/to/relationformer_checkpoint.pt \
+  --num_samples 1000 --decoder_layer 5 --visualize_mode fused \
+  --backdoor_eval --use_backdoor_images --trigger_object_idx 26 --trigger_predicate_idx 23 \
+  --output_dir ./debug_vis/relation_attention_triggered
+```
