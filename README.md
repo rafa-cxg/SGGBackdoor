@@ -1,6 +1,8 @@
 
 <h1>Official implementation of "Understanding Backdoor Attacks in Scene Graph Generation via Global Context Pathway"</h1>
 
+[Paper on arXiv (2611.04379)](https://arxiv.org/abs/2611.04379)
+
 ## Table of Contents
 
 - [OvSGTR](#ovsgtr)
